@@ -84,6 +84,9 @@ namespace cuff
         COUNT,
         BY,
         IN,
+        CLASS,
+        ENDCLASS,
+        EXTENDS,
 
         // type keywords
         NUMBER_TYPE,  // number
@@ -230,6 +233,12 @@ namespace cuff
             return "by";
         case TokenType::IN:
             return "in";
+        case TokenType::CLASS:
+            return "class";
+        case TokenType::ENDCLASS:
+            return "endclass";
+        case TokenType::EXTENDS:
+            return "extends";
         case TokenType::NUMBER_TYPE:
             return "number";
         case TokenType::STR_TYPE:

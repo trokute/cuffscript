@@ -85,6 +85,8 @@ namespace cuff
         Environment globalEnv_;
         std::unordered_map<std::string, NativeFn> natives_;
         std::unordered_map<uint32_t, const FunctionDecl *> userFunctions_;
+        std::unordered_map<uint32_t, const ClassDecl *> classes_;
+        std::vector<uint32_t> methodClassStack_;
         std::vector<std::unique_ptr<Program>> loadedModules_; // keeps imported-module ASTs alive
         std::unordered_set<std::string> importedPaths_;
         std::string scriptDir_ = ".";
@@ -139,12 +141,16 @@ namespace cuff
             // source doesn't matter (a function may be used before its
             // textual definition, as long as both are top-level).
             for (auto &s : program.statements)
+            {
                 if (s->kind == StmtKind::FunctionDecl)
                     registerFunction(std::get<FunctionDecl>(s->data));
+                else if (s->kind == StmtKind::ClassDecl)
+                    registerClass(std::get<ClassDecl>(s->data));
+            }
 
             for (auto &s : program.statements)
             {
-                if (s->kind == StmtKind::FunctionDecl)
+                if (s->kind == StmtKind::FunctionDecl || s->kind == StmtKind::ClassDecl)
                     continue; // already registered above
 
                 ExecOutcome outcome = execStatement(*s, env);
@@ -196,6 +202,11 @@ namespace cuff
             userFunctions_[decl.nameId] = &decl;
         }
 
+        void registerClass(const ClassDecl &decl)
+        {
+            classes_[decl.nameId] = &decl;
+        }
+
         ExecOutcome execStatement(const Stmt &stmt, Environment &env)
         {
             switch (stmt.kind)
@@ -216,6 +227,12 @@ namespace cuff
                                            decl.loc, "move '" + decl.name + "' to the top level");
                 }
                 registerFunction(decl); // reached for functions nested in top-level if/loop bodies
+                return ExecOutcome::normal();
+            }
+            case StmtKind::ClassDecl:
+            {
+                const auto &decl = std::get<ClassDecl>(stmt.data);
+                registerClass(decl); // reached for classes nested in top-level if/loop bodies
                 return ExecOutcome::normal();
             }
             case StmtKind::IfStmt:
@@ -269,7 +286,7 @@ namespace cuff
             return hasUpper;
         }
 
-        static void checkDeclaredType(const std::string &varType, const Value &v, const std::string &name, const SourceLocation &loc)
+        void checkDeclaredType(const std::string &varType, const Value &v, const std::string &name, const SourceLocation &loc)
         {
             // `empty` is a universal "no value" sentinel — any declared type
             // may hold it (this is what lets `find`/`match`/map lookups that
@@ -277,6 +294,20 @@ namespace cuff
             // be handled with `or_else` or an `is empty` check).
             if (v.isEmpty())
                 return;
+
+            auto classIt = classes_.find(internName(varType));
+            if (classIt != classes_.end())
+            {
+                bool classOk = v.isMap() && v.asMap()->has(kClassFieldKey) &&
+                               isClassOrAncestor(varType, v.asMap()->get(kClassFieldKey)->asStr());
+                if (!classOk)
+                {
+                    throw CuffRuntimeError(ErrorCode::DeclarationTypeMismatch,
+                                           "cannot assign a " + valueTypeName(v.type()) + " value to " + varType + " variable '" + name + "'",
+                                           loc, "'" + varType + "' is a class; '" + name + "' must hold a " + varType + " instance (or a subclass of it)");
+                }
+                return;
+            }
 
             bool ok = true;
             if (varType == "number")
@@ -814,9 +845,15 @@ namespace cuff
                 if (nativeIt != natives_.end())
                     return nativeIt->second(args, fc.loc);
 
+                auto classIt = classes_.find(fc.functionNameId);
+                if (classIt != classes_.end())
+                    return instantiateClass(*classIt->second, args, fc.loc);
+
                 throw UndefinedFunctionError("undefined function '" + fc.functionName + "'", fc.loc,
                                              "check the spelling, or make sure it's declared before this point");
             }
+            case ExprKind::MethodCall:
+                return evalMethodCall(std::get<MethodCall>(expr.data), env);
             case ExprKind::Await:
             {
                 const auto &aw = std::get<AwaitExpr>(expr.data);
@@ -1008,6 +1045,158 @@ namespace cuff
                 funcEnv.declare(decl.paramIds[i], std::move(args[i]), false);
 
             ExecOutcome outcome = execBlock(decl.body, funcEnv);
+            if (outcome.result == ExecResult::Return)
+                return std::move(outcome.returnValue);
+            if (outcome.result == ExecResult::Stop)
+                throw CuffRuntimeError(ErrorCode::StopOutsideLoop,
+                                       "'stop' cannot be used outside of a loop", outcome.loc);
+            return Value::makeEmpty();
+        }
+
+        // ---- Classes / OOP ----
+
+        static constexpr const char *kClassFieldKey = "__class__";
+
+        const FunctionDecl *findMethod(const ClassDecl &startClass, uint32_t methodNameId, uint32_t &definingClassIdOut)
+        {
+            const ClassDecl *cur = &startClass;
+            while (cur)
+            {
+                for (const auto &m : cur->methods)
+                {
+                    if (m.nameId == methodNameId)
+                    {
+                        definingClassIdOut = cur->nameId;
+                        return &m;
+                    }
+                }
+                if (!cur->hasParent)
+                    return nullptr;
+                auto parentIt = classes_.find(cur->parentNameId);
+                if (parentIt == classes_.end())
+                    throw UndefinedVariableError("class '" + cur->parentName + "' (parent of '" + cur->name +
+                                                     "') is not defined", cur->loc);
+                cur = parentIt->second;
+            }
+            return nullptr;
+        }
+
+        bool isClassOrAncestor(const std::string &expectedClassName, const std::string &actualClassName)
+        {
+            uint32_t curId = internName(actualClassName);
+            uint32_t expectedId = internName(expectedClassName);
+            while (true)
+            {
+                if (curId == expectedId)
+                    return true;
+                auto it = classes_.find(curId);
+                if (it == classes_.end() || !it->second->hasParent)
+                    return false;
+                curId = it->second->parentNameId;
+            }
+        }
+
+        const ClassDecl &classById(uint32_t classId, const SourceLocation &loc)
+        {
+            auto it = classes_.find(classId);
+            if (it == classes_.end())
+                throw UndefinedVariableError("undefined class", loc);
+            return *it->second;
+        }
+
+        Value instantiateClass(const ClassDecl &decl, std::vector<Value> &args, const SourceLocation &loc)
+        {
+            auto instanceMap = std::make_shared<ValueMap>();
+            instanceMap->set(kClassFieldKey, Value::makeStr(decl.name));
+            Value instance = Value::makeMap(instanceMap);
+
+            uint32_t definingClassId = 0;
+            const FunctionDecl *init = findMethod(decl, internName("init"), definingClassId);
+            if (init)
+                callMethod(*init, definingClassId, instance, args, loc);
+            else if (!args.empty())
+                throw ArgumentError(decl.name + "() takes no arguments (no 'init' method defined)", loc);
+
+            return instance;
+        }
+
+        Value evalMethodCall(const MethodCall &mc, Environment &env)
+        {
+            Value selfVal;
+            uint32_t searchClassId;
+
+            if (mc.isSuper)
+            {
+                auto look = env.resolve(internName("self"));
+                if (!look.value)
+                    throw UndefinedVariableError("'super' can only be used inside a method", mc.loc);
+                selfVal = *look.value;
+                if (methodClassStack_.empty())
+                    throw UndefinedVariableError("'super' can only be used inside a method", mc.loc);
+                const ClassDecl &owner = classById(methodClassStack_.back(), mc.loc);
+                if (!owner.hasParent)
+                    throw UndefinedVariableError("class '" + owner.name + "' has no parent class ('extends'), so 'super' is not valid here", mc.loc);
+                searchClassId = owner.parentNameId;
+            }
+            else
+            {
+                selfVal = evalExpr(*mc.object, env);
+                if (!selfVal.isMap() || !selfVal.asMap()->has(kClassFieldKey))
+                    throw TypeError("cannot call '." + mc.methodName + "(...)' on a " + valueTypeName(selfVal.type()) +
+                                        " value (not a class instance)",
+                                    mc.loc);
+                searchClassId = internName(selfVal.asMap()->get(kClassFieldKey)->asStr());
+            }
+
+            const ClassDecl &startClass = classById(searchClassId, mc.loc);
+            uint32_t definingClassId = 0;
+            const FunctionDecl *method = findMethod(startClass, mc.methodNameId, definingClassId);
+            if (!method)
+                throw UndefinedFunctionError("'" + startClass.name + "' has no method '" + mc.methodName + "'", mc.loc,
+                                             "check the spelling, or make sure the method is declared inside the class body");
+
+            std::vector<Value> args;
+            args.reserve(mc.args.size());
+            for (auto &a : mc.args)
+                args.push_back(evalExpr(*a, env));
+
+            return callMethod(*method, definingClassId, selfVal, args, mc.loc);
+        }
+
+        Value callMethod(const FunctionDecl &decl, uint32_t definingClassId, Value selfVal,
+                          std::vector<Value> &args, const SourceLocation &loc)
+        {
+            if (args.size() != decl.params.size())
+                throw ArgumentError(decl.name + "() expects " + std::to_string(decl.params.size()) +
+                                        " argument(s), got " + std::to_string(args.size()),
+                                    loc);
+
+            if (callDepth_ + 1 > kMaxCallDepth)
+                throw StackOverflowError("maximum call depth (" + std::to_string(kMaxCallDepth) +
+                                             ") exceeded while calling '" + decl.name + "' — check for infinite recursion",
+                                         loc);
+
+            FrameGuard guard(this, decl.isReturnable);
+
+            Environment funcEnv(Environment::Kind::FunctionScope, globalEnv_);
+            funcEnv.reserve(decl.params.size() + 1);
+            funcEnv.declare(internName("self"), std::move(selfVal), false);
+            for (size_t i = 0; i < decl.paramIds.size(); ++i)
+                funcEnv.declare(decl.paramIds[i], std::move(args[i]), false);
+
+            methodClassStack_.push_back(definingClassId);
+            ExecOutcome outcome;
+            try
+            {
+                outcome = execBlock(decl.body, funcEnv);
+            }
+            catch (...)
+            {
+                methodClassStack_.pop_back();
+                throw;
+            }
+            methodClassStack_.pop_back();
+
             if (outcome.result == ExecResult::Return)
                 return std::move(outcome.returnValue);
             if (outcome.result == ExecResult::Stop)

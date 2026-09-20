@@ -3,6 +3,7 @@
 #include "ParserCore.h"
 #include "ASTNodes.h"
 #include "ExpressionParser.h"
+#include "FunctionParser.h"
 #include "../common/TokenTypes.h"
 #include "../common/CuffError.h"
 #include <memory>
@@ -28,6 +29,66 @@ namespace cuff
             if (!p.check(TokenType::SET))
                 return false;
             return p.peek(1).is(TokenType::FUNCTION) || p.peek(1).is(TokenType::RETURNABLE) || p.peek(1).is(TokenType::ASYNC);
+        }
+
+        static bool isClassDecl(ParserCore &p)
+        {
+            if (!p.check(TokenType::SET))
+                return false;
+            return p.peek(1).is(TokenType::CLASS);
+        }
+
+        static std::unique_ptr<Stmt> parseClassDecl(ParserCore &p)
+        {
+            SourceLocation loc = p.current().location;
+            p.consume(TokenType::SET, "expected 'set'");
+            p.consume(TokenType::CLASS, "expected 'class'");
+
+            if (!p.check(TokenType::IDENTIFIER))
+                throw SyntaxError("expected a class name after 'class'", p.current().location);
+            ClassDecl decl;
+            decl.name = p.current().value;
+            decl.nameId = internName(decl.name);
+            decl.loc = loc;
+            p.advance();
+
+            if (p.match(TokenType::EXTENDS))
+            {
+                if (!p.check(TokenType::IDENTIFIER))
+                    throw SyntaxError("expected a parent class name after 'extends'", p.current().location);
+                decl.parentName = p.current().value;
+                decl.parentNameId = internName(decl.parentName);
+                decl.hasParent = true;
+                p.advance();
+            }
+
+            p.consume(TokenType::DO, "expected 'do' to open class body");
+            p.consume(TokenType::COLON, "expected ':' after 'do'");
+            p.skipNewlines();
+            if (p.check(TokenType::INDENT))
+                p.advance();
+
+            while (!p.atEnd())
+            {
+                p.skipNewlines();
+                if (p.check(TokenType::ENDCLASS) || p.check(TokenType::DEDENT))
+                    break;
+
+                if (!DeclarationParser::isFunctionDecl(p))
+                    throw SyntaxError("a class body may only contain method declarations ('set function ...' or 'set returnable function ...')",
+                                       p.current().location);
+
+                auto methodStmt = FunctionParser::parse(p);
+                decl.methods.push_back(std::move(std::get<FunctionDecl>(methodStmt->data)));
+
+                p.skipNewlines();
+            }
+
+            if (p.check(TokenType::DEDENT))
+                p.advance();
+            p.consume(TokenType::ENDCLASS, "expected 'endclass' to close class body");
+
+            return std::make_unique<Stmt>(StmtKind::ClassDecl, std::move(decl));
         }
 
         // Parse a set declaration (non-function). Caller should check isFunctionDecl first.
@@ -79,6 +140,16 @@ namespace cuff
                 // `set match result to match serial from "pattern"` — the
                 // capture-result type used by the pattern-matching commands.
                 varType = "match";
+                p.advance();
+            }
+            else if (p.check(TokenType::IDENTIFIER) && p.peek(1).is(TokenType::IDENTIFIER))
+            {
+                // `set ClassName varName to ...` — a class used as a type
+                // annotation. Not validated against the class registry here
+                // (classes are registered when the interpreter hoists them,
+                // after parsing finishes); an unknown class name just falls
+                // through to a normal runtime error when the value is used.
+                varType = p.current().value;
                 p.advance();
             }
             else
@@ -136,11 +207,24 @@ namespace cuff
             }
 
             std::vector<std::unique_ptr<Expr>> indices;
-            while (p.check(TokenType::LBRACKET))
+            while (p.check(TokenType::LBRACKET) || p.check(TokenType::DOT))
             {
-                p.advance();
-                indices.push_back(ExpressionParser::parse(p));
-                p.consume(TokenType::RBRACKET, "expected ']' to close index in 'change' statement");
+                if (p.check(TokenType::LBRACKET))
+                {
+                    p.advance();
+                    indices.push_back(ExpressionParser::parse(p));
+                    p.consume(TokenType::RBRACKET, "expected ']' to close index in 'change' statement");
+                }
+                else
+                {
+                    SourceLocation dotLoc = p.current().location;
+                    p.advance();
+                    if (!p.check(TokenType::IDENTIFIER))
+                        throw SyntaxError("expected a member name after '.'", p.current().location);
+                    std::string member = p.current().value;
+                    p.advance();
+                    indices.push_back(std::make_unique<Expr>(ExprKind::String, StringLiteral(member, dotLoc)));
+                }
             }
 
             p.consume(TokenType::TO, "expected 'to' in 'change' statement");

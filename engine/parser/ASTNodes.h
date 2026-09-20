@@ -272,6 +272,19 @@ namespace cuff
         SourceLocation loc;
     };
 
+    struct MethodCall
+    {
+        std::unique_ptr<Expr> object;
+        std::string methodName;
+        uint32_t methodNameId;
+        std::vector<std::unique_ptr<Expr>> args;
+        bool isSuper = false;
+        SourceLocation loc;
+        MethodCall(std::unique_ptr<Expr> o, std::string m, std::vector<std::unique_ptr<Expr>> a, bool sup, SourceLocation l)
+            : object(std::move(o)), methodName(std::move(m)), methodNameId(internName(methodName)),
+              args(std::move(a)), isSuper(sup), loc(l) {}
+    };
+
     // =========================================================================
     // Expression variant
     // =========================================================================
@@ -297,7 +310,8 @@ namespace cuff
         Find,
         PatternReplace,
         Split,
-        Count
+        Count,
+        MethodCall
     };
 
     struct Expr
@@ -323,7 +337,8 @@ namespace cuff
             FindExpr,
             PatternReplaceExpr,
             SplitExpr,
-            CountExpr>
+            CountExpr,
+            MethodCall>
             data;
 
         template <typename T>
@@ -390,6 +405,17 @@ namespace cuff
         std::vector<std::string> params;
         std::vector<uint32_t> paramIds; // interned `params`, set by the parser
         std::vector<std::unique_ptr<Stmt>> body;
+        SourceLocation loc;
+    };
+
+    struct ClassDecl
+    {
+        std::string name;
+        uint32_t nameId = 0;
+        std::string parentName;
+        uint32_t parentNameId = 0;
+        bool hasParent = false;
+        std::vector<FunctionDecl> methods;
         SourceLocation loc;
     };
 
@@ -518,7 +544,8 @@ namespace cuff
         UseStmt,
         ExprStmt,
         CollectionOp,
-        OrElse
+        OrElse,
+        ClassDecl
     };
 
     struct Stmt
@@ -528,6 +555,7 @@ namespace cuff
             DeclarationStmt,
             ChangeStmt,
             FunctionDecl,
+            ClassDecl,
             IfStmt,
             LoopStmt,
             StopStmt,

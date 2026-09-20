@@ -237,6 +237,46 @@ namespace cuff
                 base = std::make_unique<Expr>(ExprKind::FunctionCall,
                                               FunctionCall(std::move(funcName), std::move(args), loc));
             }
+            else if (p.check(TokenType::DOT))
+            {
+                SourceLocation loc = p.current().location;
+                p.advance();
+
+                bool isSuper = base->kind == ExprKind::Identifier &&
+                               std::get<IdentifierExpr>(base->data).name == "super";
+
+                if (!p.check(TokenType::IDENTIFIER))
+                    throw SyntaxError("expected a member name after '.'", p.current().location);
+                std::string member = p.current().value;
+                p.advance();
+
+                if (p.check(TokenType::LPAREN))
+                {
+                    p.advance();
+                    std::vector<std::unique_ptr<Expr>> args;
+                    p.skipNewlines();
+                    if (!p.check(TokenType::RPAREN))
+                    {
+                        args.push_back(ExpressionParser::parse(p));
+                        while (p.match(TokenType::COMMA))
+                        {
+                            p.skipNewlines();
+                            args.push_back(ExpressionParser::parse(p));
+                        }
+                    }
+                    p.skipNewlines();
+                    p.consume(TokenType::RPAREN, "expected ')' to close method call");
+
+                    base = std::make_unique<Expr>(ExprKind::MethodCall,
+                                                  MethodCall(std::move(base), std::move(member), std::move(args), isSuper, loc));
+                }
+                else
+                {
+                    auto keyExpr = std::make_unique<Expr>(ExprKind::String, StringLiteral(member, loc));
+                    base = std::make_unique<Expr>(ExprKind::IndexAccess,
+                                                  IndexAccess(std::move(base), std::move(keyExpr), loc));
+                }
+            }
             else
             {
                 break;

@@ -320,9 +320,31 @@ namespace cuff
         case ValueType::Map:
         {
             std::ostringstream os;
-            os << "{";
             const auto &m = asMap();
             const auto &ks = m->keys();
+            const Value *classField = m->get("__class__");
+            if (classField && classField->isStr())
+            {
+                os << classField->asStr() << "{";
+                bool first = true;
+                for (size_t i = 0; i < ks.size(); ++i)
+                {
+                    if (ks[i] == "__class__")
+                        continue;
+                    if (!first)
+                        os << ", ";
+                    first = false;
+                    const Value *v = m->get(ks[i]);
+                    os << ks[i] << ": ";
+                    if (v->isStr())
+                        os << "\"" << v->asStr() << "\"";
+                    else
+                        os << v->toDisplayString();
+                }
+                os << "}";
+                return os.str();
+            }
+            os << "{";
             for (size_t i = 0; i < ks.size(); ++i)
             {
                 if (i)

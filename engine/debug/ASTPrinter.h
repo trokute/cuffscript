@@ -110,6 +110,29 @@ namespace cuff
                     printStmt(os, *s, depth + 1);
                 break;
             }
+            case StmtKind::ClassDecl:
+            {
+                const auto &c = std::get<ClassDecl>(stmt.data);
+                os << "ClassDecl " << c.name;
+                if (c.hasParent)
+                    os << " extends " << c.parentName;
+                os << "\n";
+                for (const auto &m : c.methods)
+                {
+                    indent(os, depth + 1);
+                    os << "Method " << m.name << "(";
+                    for (size_t i = 0; i < m.params.size(); ++i)
+                    {
+                        if (i > 0)
+                            os << ", ";
+                        os << m.params[i];
+                    }
+                    os << ")\n";
+                    for (const auto &s : m.body)
+                        printStmt(os, *s, depth + 2);
+                }
+                break;
+            }
             case StmtKind::IfStmt:
             {
                 const auto &ifst = std::get<IfStmt>(stmt.data);
@@ -453,6 +476,17 @@ namespace cuff
                 indent(os, depth + 1);
                 os << "target:\n";
                 printExpr(os, *c.target, depth + 2);
+                break;
+            }
+            case ExprKind::MethodCall:
+            {
+                const auto &mc = std::get<MethodCall>(expr.data);
+                os << "MethodCall ." << mc.methodName << (mc.isSuper ? " [super]" : "") << "\n";
+                indent(os, depth + 1);
+                os << "object:\n";
+                printExpr(os, *mc.object, depth + 2);
+                for (const auto &a : mc.args)
+                    printExpr(os, *a, depth + 1);
                 break;
             }
             }

@@ -35,7 +35,11 @@ namespace cuff
             switch (tok.type)
             {
             case TokenType::SET:
-                if (DeclarationParser::isFunctionDecl(p))
+                if (DeclarationParser::isClassDecl(p))
+                {
+                    stmt = DeclarationParser::parseClassDecl(p);
+                }
+                else if (DeclarationParser::isFunctionDecl(p))
                 {
                     stmt = FunctionParser::parse(p);
                 }
