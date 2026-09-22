@@ -201,7 +201,7 @@ namespace cuff
     public:
         ~ValueMap();
 
-        void set(const std::string &key, Value v)
+        void set(std::string key, Value v)
         {
             auto it = index_.find(key);
             if (it != index_.end())
@@ -210,7 +210,7 @@ namespace cuff
                 return;
             }
             index_.emplace(key, values_.size());
-            order_.push_back(key);
+            order_.push_back(std::move(key));
             values_.push_back(std::move(v));
         }
 
