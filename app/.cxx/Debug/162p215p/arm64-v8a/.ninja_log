@@ -1,0 +1,3 @@
+# ninja log v5
+0	14120	1790044669338276609	CMakeFiles/cuffbridge.dir/native_bridge.cpp.o	8fe7be89ec2f2966
+14136	14304	1790044669680276625	/workspaces/cuffscript/full_bundle/android_app/app/build/intermediates/cxx/Debug/162p215p/obj/arm64-v8a/libcuffbridge.so	8d83d3f57e61af40

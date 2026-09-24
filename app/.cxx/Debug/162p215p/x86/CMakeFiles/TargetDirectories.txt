@@ -1,0 +1,3 @@
+/workspaces/cuffscript/full_bundle/android_app/app/.cxx/Debug/162p215p/x86/CMakeFiles/cuffbridge.dir
+/workspaces/cuffscript/full_bundle/android_app/app/.cxx/Debug/162p215p/x86/CMakeFiles/edit_cache.dir
+/workspaces/cuffscript/full_bundle/android_app/app/.cxx/Debug/162p215p/x86/CMakeFiles/rebuild_cache.dir

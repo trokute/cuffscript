@@ -1,0 +1,4 @@
+/home/codespace/android-sdk/cmake/3.22.1/bin/ninja \
+  -C \
+  /workspaces/cuffscript/full_bundle/android_app/app/.cxx/Debug/162p215p/arm64-v8a \
+  cuffbridge

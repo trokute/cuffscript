@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "/workspaces/cuffscript/full_bundle/android_app/app/src/main/cpp/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/home/codespace/android-sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/workspaces/cuffscript/full_bundle/android_app/app/.cxx/Debug/162p215p/armeabi-v7a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/home/codespace/android-sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/workspaces/cuffscript/full_bundle/android_app/app/.cxx/Debug/162p215p/armeabi-v7a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "cuffbridge::@6890427a1f51a3e7e1df": {
+      "artifactName": "cuffbridge",
+      "abi": "armeabi-v7a",
+      "output": "/workspaces/cuffscript/full_bundle/android_app/app/build/intermediates/cxx/Debug/162p215p/obj/armeabi-v7a/libcuffbridge.so",
+      "runtimeFiles": []
+    }
+  }
+}

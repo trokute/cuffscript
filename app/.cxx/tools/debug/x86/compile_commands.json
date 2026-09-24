@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/workspaces/cuffscript/full_bundle/android_app/app/.cxx/Debug/162p215p/x86",
+  "command": "/home/codespace/android-sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=i686-none-linux-android24 --sysroot=/home/codespace/android-sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dcuffbridge_EXPORTS -I/workspaces/cuffscript/full_bundle/android_app/app/src/main/cpp -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++17 -fno-limit-debug-info  -fPIC -o CMakeFiles/cuffbridge.dir/native_bridge.cpp.o -c /workspaces/cuffscript/full_bundle/android_app/app/src/main/cpp/native_bridge.cpp",
+  "file": "/workspaces/cuffscript/full_bundle/android_app/app/src/main/cpp/native_bridge.cpp"
+}
+]

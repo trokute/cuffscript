@@ -1,0 +1,3 @@
+ninja: Entering directory `/workspaces/cuffscript/full_bundle/android_app/app/.cxx/Debug/162p215p/x86'
+[1/2] Building CXX object CMakeFiles/cuffbridge.dir/native_bridge.cpp.o
+[2/2] Linking CXX shared library /workspaces/cuffscript/full_bundle/android_app/app/build/intermediates/cxx/Debug/162p215p/obj/x86/libcuffbridge.so
